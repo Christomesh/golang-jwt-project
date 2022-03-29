@@ -2,9 +2,9 @@ package routes
 
 import (
 	controller "golang-jwt-api-project/controllers"
+	"golang-jwt-api-project/middleware"
 
 	"github.com/gin-gonic/gin"
-	"github.com/go-chi/chi/middleware"
 )
 
 func UserRoutes(incomingRoutes *gin.Engine) {
