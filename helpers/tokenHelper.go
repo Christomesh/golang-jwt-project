@@ -25,6 +25,7 @@ type SignedDetails struct {
 }
 
 var userCollection *mongo.Collection = database.OpenCollection(database.Client, "user")
+
 var SECRET_KEY string = os.Getenv("SECRET_KEY")
 
 func GenerateAllTokens(email string, firstName string, lastName string, userType string, uid string) (signedToken string, signedRefreshToken string, err error) {
@@ -38,11 +39,13 @@ func GenerateAllTokens(email string, firstName string, lastName string, userType
 			ExpiresAt: time.Now().Local().Add(time.Hour * time.Duration(24)).Unix(),
 		},
 	}
+
 	refreshClaims := &SignedDetails{
 		StandardClaims: jwt.StandardClaims{
 			ExpiresAt: time.Now().Local().Add(time.Hour * time.Duration(168)).Unix(),
 		},
 	}
+
 	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(SECRET_KEY))
 	refreshToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, refreshClaims).SignedString([]byte(SECRET_KEY))
 
@@ -50,11 +53,41 @@ func GenerateAllTokens(email string, firstName string, lastName string, userType
 		log.Panic(err)
 		return
 	}
+
 	return token, refreshToken, err
 }
 
+func ValidateToken(signedToken string) (claims *SignedDetails, msg string) {
+	token, err := jwt.ParseWithClaims(
+		signedToken,
+		&SignedDetails{},
+		func(token *jwt.Token) (interface{}, error) {
+			return []byte(SECRET_KEY), nil
+		},
+	)
+
+	if err != nil {
+		msg = err.Error()
+		return
+	}
+
+	claims, ok := token.Claims.(*SignedDetails)
+	if !ok {
+		msg = fmt.Sprintf("the token is invalid")
+		msg = err.Error()
+		return
+	}
+
+	if claims.ExpiresAt < time.Now().Local().Unix() {
+		msg = fmt.Sprintf("token is expired")
+		msg = err.Error()
+		return
+	}
+	return claims, msg
+}
+
 func UpdateAllTokens(signedToken string, signedRefreshToken string, userId string) {
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Second)
+	var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
 
 	var updateObj primitive.D
 
@@ -69,6 +102,7 @@ func UpdateAllTokens(signedToken string, signedRefreshToken string, userId strin
 	opt := options.UpdateOptions{
 		Upsert: &upsert,
 	}
+
 	_, err := userCollection.UpdateOne(
 		ctx,
 		filter,
@@ -85,31 +119,4 @@ func UpdateAllTokens(signedToken string, signedRefreshToken string, userId strin
 		return
 	}
 	return
-
-}
-
-func ValidateToken(signedToken string) (claims *SignedDetails, msg string) {
-	token, err := jwt.ParseWithClaims(
-		signedToken,
-		&SignedDetails{},
-		func(token *jwt.Token) (interface{}, error) {
-			return []byte(SECRET_KEY), nil
-		},
-	)
-	if err != nil {
-		msg = err.Error()
-		return
-	}
-	claims, ok := token.Claims.(*SignedDetails)
-	if !ok {
-		msg = fmt.Sprint("the token is invalid")
-		msg = err.Error()
-		return
-	}
-	if claims.ExpiresAt < time.Now().Local().Unix() {
-		msg = fmt.Sprintf("token is expired")
-		msg = err.Error()
-		return
-	}
-	return claims, msg
 }
